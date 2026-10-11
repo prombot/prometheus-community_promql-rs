@@ -59,7 +59,7 @@ Each failing core eval is filed under a missing feature the engine names, or lef
 
 ## Unattributed failures
 
-Core evals the engine does not name a missing feature for: wrong results, panics, errors nobody has classified. Ids are spelled as in `SUPPORTED.toml`.
+Core evals the engine does not name a missing feature for: wrong results, panics, errors nobody has classified. Ids are spelled as in `SUPPORTED.toml`; a cause above a list is what reading those evals found.
 
 ### at_modifier (2)
 
@@ -77,6 +77,8 @@ Core evals the engine does not name a missing feature for: wrong results, panics
 - `-{job="api"} @ 0..1200000/1200000`
 
 ### type_and_unit (4)
+
+Needs delayed name removal. The corpus engine runs with `EnableDelayedNameRemoval` (`NewTestEngine`, `promql/promqltest/test.go` at 83962c35), under which `(x + 1)` keeps `__type__` and `__unit__` until the end, so the set operator's signature, which sets aside `__name__` alone, matches the right side; an immediate drop cannot reproduce that.
 
 - `(http_requests_total{group="canary"} + 1) and http_requests_total{instance="0"} @ 3000000`
 - `(http_requests_total{group="canary"} + 1) or http_requests_total{instance="1"} @ 3000000`

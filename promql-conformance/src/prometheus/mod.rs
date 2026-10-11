@@ -20,6 +20,7 @@
 //! which of those must pass — the gate — and [`report`] says how much of
 //! the corpus is left, which is a different question and not a gate.
 
+pub mod causes;
 pub mod report;
 pub mod run;
 pub mod script;

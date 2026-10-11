@@ -14,7 +14,9 @@
 //! It is an allowlist, so the rest of the corpus runs without gating
 //! anything. Three things turn CI red: a listed eval stops passing, an
 //! unlisted eval starts passing (declare it), or a listed eval stops
-//! existing after an upstream re-pin.
+//! existing after an upstream re-pin. A fourth guards the report rather
+//! than the engine: a cause in `causes.rs` whose eval is no longer an
+//! unattributed failure.
 //!
 //! # Seeing where we stand
 //!
@@ -48,6 +50,7 @@ use std::process::ExitCode;
 use std::sync::OnceLock;
 
 use libtest_mimic::{Arguments, Failed, Trial};
+use promql_conformance::prometheus::causes;
 use promql_conformance::prometheus::supported::{self, Supported};
 use promql_conformance::prometheus::{
     inventory_markdown, load_corpus, run_script, scoreboard, Outcome, Verdict,
@@ -96,11 +99,12 @@ fn main() -> ExitCode {
         return bless(&outcomes, &declared);
     }
 
-    let trials = if all_requested() {
+    let mut trials = if all_requested() {
         every_eval(&outcomes)
     } else {
         gated(&declared, &outcomes)
     };
+    trials.push(known_causes(&outcomes));
 
     libtest_mimic::run(&args, trials).exit_code()
 }
@@ -186,6 +190,22 @@ fn every_eval(outcomes: &[Outcome]) -> Vec<Trial> {
             })
         })
         .collect()
+}
+
+/// A cause in `causes::KNOWN` whose eval no longer fails unattributed would
+/// go on explaining a failure in `UNSUPPORTED.md` that does not happen.
+fn known_causes(outcomes: &[Outcome]) -> Trial {
+    let stale = causes::stale(causes::KNOWN, outcomes);
+    Trial::test(
+        "causes::KNOWN names only unattributed failures",
+        move || match stale.is_empty() {
+            true => Ok(()),
+            false => Err(Failed::from(format!(
+                "no longer an unattributed core failure, drop from causes.rs:\n  {}",
+                stale.join("\n  ")
+            ))),
+        },
+    )
 }
 
 /// Say how many assertions we parse but do not check, so the gap stays

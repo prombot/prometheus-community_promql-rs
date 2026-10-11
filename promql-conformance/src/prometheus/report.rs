@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use super::causes;
 use super::run::{Outcome, Verdict};
 use super::supported::Supported;
 
@@ -349,27 +350,7 @@ pub fn inventory_markdown(outcomes: &[Outcome]) -> String {
         let _ = writeln!(out, "| {count} | {feature} |");
     }
 
-    let mut unattributed: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    for o in outcomes
-        .iter()
-        .filter(|o| reason(o) == Some(Reason::Unattributed))
-    {
-        unattributed.entry(&o.file).or_default().push(&o.id);
-    }
-    if !unattributed.is_empty() {
-        out.push_str(
-            "\n## Unattributed failures\n\n\
-             Core evals the engine does not name a missing feature for: wrong results, \
-             panics, errors nobody has classified. Ids are spelled as in \
-             `SUPPORTED.toml`.\n",
-        );
-        for (file, ids) in &unattributed {
-            let _ = write!(out, "\n### {file} ({})\n\n", ids.len());
-            for id in ids {
-                let _ = writeln!(out, "- {}", code_span(id));
-            }
-        }
-    }
+    out.push_str(&unattributed_section(outcomes, causes::KNOWN));
 
     out.push_str(
         "\n## By file\n\n\
@@ -419,6 +400,55 @@ pub fn inventory_markdown(outcomes: &[Outcome]) -> String {
          ```\n",
     );
 
+    out
+}
+
+/// The unattributed core evals by file. Within a file, the ones nobody has
+/// read yet come first, then each cause from `known` above the ids it
+/// explains, so one sentence serves every eval it covers.
+fn unattributed_section(outcomes: &[Outcome], known: &[(&str, &str, &str)]) -> String {
+    let mut unattributed: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for o in outcomes
+        .iter()
+        .filter(|o| reason(o) == Some(Reason::Unattributed))
+    {
+        unattributed.entry(&o.file).or_default().push(&o.id);
+    }
+    let mut out = String::new();
+    if unattributed.is_empty() {
+        return out;
+    }
+    out.push_str(
+        "\n## Unattributed failures\n\n\
+         Core evals the engine does not name a missing feature for: wrong results, \
+         panics, errors nobody has classified. Ids are spelled as in \
+         `SUPPORTED.toml`; a cause above a list is what reading those evals found.\n",
+    );
+    for (file, ids) in &unattributed {
+        let _ = write!(out, "\n### {file} ({})\n\n", ids.len());
+        // Insertion order, so a cause keeps the place its first eval has.
+        let mut groups: Vec<(Option<&str>, Vec<&str>)> = vec![(None, Vec::new())];
+        for id in ids {
+            let c = causes::cause(known, file, id);
+            match groups.iter_mut().find(|(held, _)| *held == c) {
+                Some((_, held)) => held.push(id),
+                None => groups.push((c, vec![id])),
+            }
+        }
+        let mut first = true;
+        for (c, ids) in groups.iter().filter(|(_, ids)| !ids.is_empty()) {
+            if !first {
+                out.push('\n');
+            }
+            first = false;
+            if let Some(c) = c {
+                let _ = write!(out, "{c}\n\n");
+            }
+            for id in ids {
+                let _ = writeln!(out, "- {}", code_span(id));
+            }
+        }
+    }
     out
 }
 
@@ -689,6 +719,23 @@ mod tests {
         assert!(
             md.contains("| f | 7 | 2 | 2 | 1 | 2 (29%) | 1 of 3 (33%) |  |"),
             "{md}"
+        );
+    }
+
+    #[test]
+    fn a_known_cause_heads_the_evals_it_explains() {
+        let outcomes = vec![
+            outcome("f", "a", Verdict::Fail("x".into())),
+            outcome("f", "b", Verdict::Fail("x".into())),
+            outcome("f", "c", Verdict::Fail("x".into())),
+        ];
+        let known = [("f", "a", "Cause one."), ("f", "c", "Cause one.")];
+        assert_eq!(
+            unattributed_section(&outcomes, &known)
+                .split_once("### ")
+                .unwrap()
+                .1,
+            "f (3)\n\n- `b`\n\nCause one.\n\n- `a`\n- `c`\n"
         );
     }
 
