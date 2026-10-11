@@ -13,7 +13,7 @@
 //! `RecordBatch` end to end instead of paying to materialize Rust values
 //! it may only re-encode. Applied before the batches come back are
 //! [`series::drop_empty`] — see its doc for why that can't live in the
-//! plan — and `labelset::reject_same_labelset` and
+//! plan — and `labelset::merge_same_labelset` and
 //! `labelset::sort_by_labelset`, Prometheus's own post-evaluation passes.
 //!
 //! Between planning and execution the physical plan goes through
@@ -336,7 +336,9 @@ impl Engine {
                 Ok(series::drop_empty(b))
             })
             .collect::<Result<_, EngineError>>()?;
-        labelset::reject_same_labelset(&batches)?;
+        // A sorted result is an instant vector, one point per row, so the
+        // merge can only error there and never appends out of order.
+        let batches = labelset::merge_same_labelset(batches)?;
         if ordered {
             return Ok(batches);
         }
