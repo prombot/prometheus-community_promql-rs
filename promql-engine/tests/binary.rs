@@ -129,6 +129,45 @@ fn arithmetic_drops_the_metric_name() {
     }
 }
 
+/// `resultMetric` clears all of `schema.Metadata`, not just the name,
+/// wherever `changesMetricSchema` or `bool` holds. The signature is a
+/// separate matter: `ignoring` sets aside `__name__` alone, so the two
+/// sides still have to agree on type and unit to pair.
+#[test]
+fn arithmetic_and_bool_drop_the_type_and_unit_with_the_name() {
+    let typed = MemorySeriesSource::from_descriptions(
+        &load(&[
+            r#"requests{__type__="counter", __unit__="request", group="canary", pod="a"} 10+10x10"#,
+            r#"requests{__type__="counter", __unit__="request", group="production", pod="a"} 20+20x10"#,
+            r#"requests{__type__="gauge", __unit__="request", group="production", pod="b"} 1+1x10"#,
+            r#"requests{__type__="counter", __unit__="request", group="canary", pod="b"} 1+1x10"#,
+        ]),
+        30.0,
+    );
+    let canary_a = vec![
+        ("group".to_string(), "canary".to_string()),
+        ("pod".to_string(), "a".to_string()),
+    ];
+    let canary = r#"requests{group="canary", pod="a"}"#;
+    let row = |query: &str| vector_of(&typed, query, &at_150s());
+    assert_eq!(
+        row(&format!("{canary} / 0")),
+        [(canary_a.clone(), f64::INFINITY)]
+    );
+    assert_eq!(row(&format!("0 * {canary}")), [(canary_a.clone(), 0.0)]);
+    assert_eq!(
+        row(&format!("{canary} == bool 60")),
+        [(canary_a.clone(), 1.0)]
+    );
+    // Without `bool` the sample is the one that was there, labels and all.
+    assert_eq!(row(&format!("{canary} > 0"))[0].0.len(), 5);
+    // Pod `b` differs in `__type__` across the groups, so it has no partner.
+    assert_eq!(
+        row(r#"requests{group="canary"} / ignoring(group) requests{group="production"}"#),
+        [(pod("a"), 0.5)]
+    );
+}
+
 /// Default matching pairs on every label but `__name__`, so `pod="c"`
 /// — which only one side has — is simply not in the result.
 #[test]

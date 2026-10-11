@@ -626,7 +626,7 @@ impl Planner<'_> {
             // as the range functions drop it: below, two series differing
             // only in their name would fold into one group.
             selector::Pick::Timestamp => {
-                let (expr, names) = labels::keep(&label_names, |n| n != METRIC_NAME);
+                let (expr, names) = labels::keep(&label_names, |n| !labels::is_metadata_label(n));
                 (expr.alias(LABELS), names)
             }
         };
@@ -832,7 +832,7 @@ impl Planner<'_> {
             },
         };
         let (labels_expr, label_names) = labels::keep(&input.label_names, |n| {
-            !func.drops_metric_name() || n != METRIC_NAME
+            !func.drops_metric_name() || !labels::is_metadata_label(n)
         });
         // A name of its own for what this function reads. Without it the
         // projection below can be merged into the one under it, and the
@@ -891,7 +891,8 @@ impl Planner<'_> {
     /// arguments, over an already planned vector.
     fn negate(&mut self, input: Planned) -> Result<Planned, EngineError> {
         let func = elementwise::Func::Neg;
-        let (labels_expr, label_names) = labels::keep(&input.label_names, |n| n != METRIC_NAME);
+        let (labels_expr, label_names) =
+            labels::keep(&input.label_names, |n| !labels::is_metadata_label(n));
         // Named for the reason `elementwise` names its stage.
         let stage = self.stage(func.as_str());
         let plan = LogicalPlanBuilder::from(input.plan)
@@ -955,7 +956,7 @@ impl Planner<'_> {
         // two branches that disagree about the name and DataFusion
         // calls it ambiguous. A computed struct is unqualified.
         let (labels_expr, label_names) = labels::keep(&input.label_names, |n| {
-            !op.drops_metric_name(return_bool) || n != METRIC_NAME
+            !op.drops_metric_name(return_bool) || !labels::is_metadata_label(n)
         });
         // The scalar goes in the slot that says which side it was on;
         // see `elementwise::Func::bind`.
@@ -1254,7 +1255,7 @@ impl Planner<'_> {
             )
             .alias(SAMPLES)],
         )?;
-        // `__name__` is dropped above the grouping, not below it: below, two
+        // The metadata labels go above the grouping, not below it: below, two
         // series differing only in their name would fold into one group.
         if !func.drops_metric_name() {
             return Ok(Planned {
@@ -1262,7 +1263,8 @@ impl Planner<'_> {
                 label_names: input_names,
             });
         }
-        let (labels_expr, label_names) = labels::keep(&input_names, |n| n != METRIC_NAME);
+        let (labels_expr, label_names) =
+            labels::keep(&input_names, |n| !labels::is_metadata_label(n));
         let plan = builder
             .project(canonical(labels_expr.alias(LABELS)))?
             .build()?;

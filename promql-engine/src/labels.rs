@@ -271,6 +271,16 @@ pub fn widen(input: &[String], names: &[String]) -> Expr {
     )
 }
 
+/// Upstream's `schema.IsMetadataLabel` (`schema/labels.go` at 83962c35):
+/// the labels that say what a metric is. An operator that changes what the
+/// value means drops all three where it drops the name
+/// (`DropReserved(schema.IsMetadataLabel)`), or `x / 0` would still claim
+/// to be a counter of requests. Grouping and `ignoring` signatures set
+/// aside `__name__` alone upstream, so they do not call this.
+pub fn is_metadata_label(name: &str) -> bool {
+    matches!(name, METRIC_NAME | "__type__" | "__unit__")
+}
+
 /// The `labels` struct with only the names passing `keep`, read from the
 /// existing struct. Returns the expression and the names it carries.
 pub fn keep(input: &[String], mut keep: impl FnMut(&str) -> bool) -> (Expr, Vec<String>) {

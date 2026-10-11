@@ -63,6 +63,7 @@ use datafusion::physical_expr::expressions::Literal;
 use promql_parser::token::ItemType;
 
 use crate::aggregate::Grid;
+use crate::labels::is_metadata_label;
 use crate::matcher::METRIC_NAME;
 use crate::series;
 
@@ -189,7 +190,7 @@ impl Op {
     ///
     /// Upstream's `changesMetricSchema` (`promql/engine.go:4208` at
     /// 83962c35) names the arithmetic operators and nothing else, so a
-    /// comparison keeps `__name__` — it answers with a sample that was
+    /// comparison keeps the metadata labels — it answers with a sample that was
     /// already there. `bool` replaces the value with a 1 or a 0, which
     /// is no longer that metric either, and drops it too.
     pub fn drops_metric_name(&self, return_bool: bool) -> bool {
@@ -807,7 +808,7 @@ impl Pairing {
             // `on` keeps only what it names and `ignoring` drops only
             // what it names, which is one test: the label goes where
             // being named is not what the modifier wanted.
-            let drop = (name == METRIC_NAME && self.op.drops_metric_name(self.return_bool))
+            let drop = (is_metadata_label(name) && self.op.drops_metric_name(self.return_bool))
                 || (m.card == Card::OneToOne && m.on != m.labels.iter().any(|l| l == name));
             if drop {
                 out[index].clear();

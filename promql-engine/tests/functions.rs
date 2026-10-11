@@ -46,9 +46,13 @@ type Row = (Vec<(String, String)>, f64);
 /// The result of `query` at 150s, sorted by label set — a vector
 /// result has no promised order.
 fn vector(query: &str) -> Vec<Row> {
+    vector_of(source().as_ref(), query)
+}
+
+fn vector_of(source: &dyn promql_engine::SeriesSource, query: &str) -> Vec<Row> {
     let batches = Engine::blocking()
         .unwrap()
-        .range_query(source().as_ref(), query, &at_150s())
+        .range_query(source, query, &at_150s())
         .unwrap_or_else(|e| panic!("{query}: {e}"));
     let mut rows: Vec<Row> = promql_engine::series::decode(&batches)
         .expect("the canonical shape decodes")
@@ -448,6 +452,44 @@ fn unary_minus_negates_and_drops_the_name_and_plus_changes_nothing() {
     // visible as a series.
     assert_eq!(vector("vector(-time())")[0].1, -150.0);
     assert_eq!(vector("-vector(1)")[0].1, -1.0);
+}
+
+/// `__type__` and `__unit__` describe the metric as `__name__` names it,
+/// so whatever drops the name drops them too (`schema.IsMetadataLabel`);
+/// a negated counter of requests is neither.
+#[test]
+fn the_type_and_unit_go_wherever_the_name_goes() {
+    let typed = MemorySeriesSource::from_descriptions(
+        &load(&[r#"requests{__type__="counter", __unit__="request", pod="a"} 10+10x10"#]),
+        30.0,
+    );
+    let pod_a = vec![("pod".to_string(), "a".to_string())];
+    assert_eq!(vector_of(&typed, "-requests"), vec![(pod_a.clone(), -60.0)]);
+    assert_eq!(
+        vector_of(&typed, "abs(requests)"),
+        vec![(pod_a.clone(), 60.0)]
+    );
+    assert_eq!(
+        vector_of(&typed, "timestamp(requests)"),
+        vec![(pod_a.clone(), 150.0)]
+    );
+    assert_eq!(
+        vector_of(&typed, "rate(requests[1m])"),
+        vec![(pod_a, 1.0 / 3.0)]
+    );
+    // `last_over_time` and `+` keep the name, and with it the rest.
+    for query in ["last_over_time(requests[1m])", "+requests"] {
+        let names: Vec<String> = vector_of(&typed, query)[0]
+            .0
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect();
+        assert_eq!(
+            names,
+            ["__name__", "__type__", "__unit__", "pod"],
+            "{query}"
+        );
+    }
 }
 
 /// A number written out is a scalar, one unlabelled series like
