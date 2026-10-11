@@ -349,10 +349,11 @@ fn a_call_prometheus_would_not_parse_is_a_query_error() {
 }
 
 /// What the elementwise operator cannot express is still named as the
-/// feature it is, not as a bad query.
+/// feature it is, not as a bad query: a `scalar(v)` operand reads data,
+/// and the operators fold their scalars while planning.
 #[test]
 fn the_functions_that_are_not_elementwise_are_still_unsupported() {
-    let err = error("scalar(temperature)");
+    let err = error("temperature + scalar(temperature)");
     assert!(
         matches!(&err, EngineError::Unsupported(f) if f == "the scalar function"),
         "{err}"
@@ -487,18 +488,4 @@ fn a_literal_covers_the_range_and_a_string_is_refused_in_one() {
         matches!(&err, EngineError::Query(m) if m.contains("for range query")),
         "{err}"
     );
-}
-
-/// The instant query's string answer, through any parentheses, and
-/// nothing for a query that is not a string.
-#[test]
-fn an_instant_string_is_the_literal_without_its_quotes() {
-    let engine = Engine::blocking().unwrap();
-    assert_eq!(
-        engine.instant_string(r#"(" Foo ")"#).unwrap().as_deref(),
-        Some(" Foo ")
-    );
-    assert_eq!(engine.instant_string(r#""""#).unwrap().as_deref(), Some(""));
-    assert_eq!(engine.instant_string("1").unwrap(), None);
-    assert_eq!(engine.instant_string("temperature").unwrap(), None);
 }

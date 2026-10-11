@@ -42,6 +42,7 @@ pub(crate) mod labels;
 mod labelset;
 mod matcher;
 pub mod math; // benches/kernels.rs
+pub(crate) mod matrix;
 pub(crate) mod memory;
 pub(crate) mod params;
 pub(crate) mod plan;
@@ -51,9 +52,10 @@ pub mod selector; // benches/kernels.rs
 pub mod series;
 pub(crate) mod sort;
 pub mod source;
+pub(crate) mod to_scalar;
 pub(crate) mod value_type;
 
-pub use engine::{check_selector_plans, Engine, EngineOptions, RangeQuery};
+pub use engine::{check_selector_plans, Engine, EngineOptions, InstantResult, RangeQuery};
 pub use error::{EngineError, SeriesError};
 pub use explain::{render as explain_plan, render_physical as explain_physical_plan};
 pub use matcher::{CompiledMatcher, METRIC_NAME};
